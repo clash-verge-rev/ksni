@@ -58,9 +58,10 @@ impl<T> StatusNotifierItem<T> {
 impl<T: Tray> StatusNotifierItem<T> {
     // show a self rendered menu, not supported by ksni
     fn context_menu(&self, _x: i32, _y: i32) -> zbus::fdo::Result<()> {
-        Err(zbus::fdo::Error::UnknownMethod(
-            "Not supported, please use `menu`".into(),
-        ))
+        // GNOME's AppIndicator host expects this call to succeed so it proceeds
+        // to fetch the exported menu via /MenuBar. Returning an error here
+        // prevents the menu from opening, so we simply acknowledge the request.
+        Ok(())
     }
 
     async fn activate(
