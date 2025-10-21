@@ -3,6 +3,7 @@ use std::future::Future;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
 use paste::paste;
@@ -16,6 +17,8 @@ use crate::dbus_interface::{
 };
 use crate::menu;
 use crate::{Error, HandleReuest, OfflineReason, Tray};
+
+const DOUBLE_CLICK_INTERVAL: Duration = Duration::from_millis(350);
 
 static INSTANCE_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
@@ -161,6 +164,7 @@ pub(crate) struct Service<T> {
     prop_monitor: PropertiesMonitor,
     item_id_offset: i32,
     pub revision: u32,
+    last_activate: Option<Instant>,
 }
 
 impl<T: Tray> Service<T> {
@@ -173,6 +177,7 @@ impl<T: Tray> Service<T> {
             prop_monitor,
             item_id_offset: 0,
             revision: 0,
+            last_activate: None,
         }))
     }
 
@@ -454,7 +459,19 @@ impl<T: Tray> Service<T> {
     }
 
     pub async fn call_activate(&mut self, conn: &Connection, x: i32, y: i32) {
-        self.tray.activate(x, y);
+        let now = Instant::now();
+        let is_double = self
+            .last_activate
+            .map(|last| now.saturating_duration_since(last) <= DOUBLE_CLICK_INTERVAL)
+            .unwrap_or(false);
+
+        if is_double {
+            self.last_activate = None;
+            self.tray.double_activate(x, y);
+        } else {
+            self.last_activate = Some(now);
+            self.tray.activate(x, y);
+        }
         let _ = self.update(conn).await;
     }
 

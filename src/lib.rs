@@ -41,6 +41,22 @@ pub use tray::{Category, Icon, Orientation, Status, ToolTip};
 
 use crate::compat::{mpsc, oneshot, Mutex};
 
+/// Response returned by [`Tray::context_menu`] to control how the host handles a
+/// context menu request.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ContextMenuResponse {
+    /// Allow the host environment to show the exported menu.
+    ShowMenu,
+    /// Suppress the host menu and keep the event within the application.
+    Suppress,
+}
+
+impl Default for ContextMenuResponse {
+    fn default() -> Self {
+        Self::ShowMenu
+    }
+}
+
 /// A system tray, implement this to create your tray
 pub trait Tray: Sized + Send + 'static {
     /// Replaces the default activate behavior with opening the menu
@@ -75,6 +91,14 @@ pub trait Tray: Sized + Send + 'static {
     /// the x and y parameters are in screen coordinates and is to be considered
     /// an hint to the item where to show eventual windows (if any).
     fn activate(&mut self, _x: i32, _y: i32) {}
+
+    /// Called when two activate events arrive within the system double-click interval.
+    ///
+    /// The default implementation delegates to [`Self::activate`] to preserve the
+    /// historical behaviour of double clicks triggering the single-click logic.
+    fn double_activate(&mut self, x: i32, y: i32) {
+        self.activate(x, y);
+    }
 
     /// Is to be considered a secondary and less important form of activation
     /// compared to Activate.
@@ -174,6 +198,16 @@ pub trait Tray: Sized + Send + 'static {
     /// using neither of those) at its discretion.
     fn attention_movie_name(&self) -> String {
         Default::default()
+    }
+
+    /// Handles context menu requests from the host environment.
+    ///
+    /// Returning [`ContextMenuResponse::ShowMenu`] keeps the legacy behaviour of
+    /// letting the host display the exported menu. Returning
+    /// [`ContextMenuResponse::Suppress`] prevents the host menu from opening,
+    /// allowing applications to perform custom actions instead.
+    fn context_menu(&mut self, _x: i32, _y: i32) -> ContextMenuResponse {
+        ContextMenuResponse::default()
     }
 
     /// Data structure that describes extra information associated to this item,

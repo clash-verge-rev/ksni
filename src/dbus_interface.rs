@@ -7,7 +7,7 @@ use zbus::{object_server::SignalEmitter, Connection};
 
 use crate::compat::Mutex;
 use crate::service::Service;
-use crate::{Icon, ToolTip, Tray};
+use crate::{ContextMenuResponse, Icon, ToolTip, Tray};
 
 pub const SNI_PATH: ObjectPath = ObjectPath::from_static_str_unchecked("/StatusNotifierItem");
 pub const MENU_PATH: ObjectPath = ObjectPath::from_static_str_unchecked("/MenuBar");
@@ -56,12 +56,22 @@ impl<T> StatusNotifierItem<T> {
 
 #[zbus::interface(name = "org.kde.StatusNotifierItem")]
 impl<T: Tray> StatusNotifierItem<T> {
-    // show a self rendered menu, not supported by ksni
-    fn context_menu(&self, _x: i32, _y: i32) -> zbus::fdo::Result<()> {
-        // GNOME's AppIndicator host expects this call to succeed so it proceeds
-        // to fetch the exported menu via /MenuBar. Returning an error here
-        // prevents the menu from opening, so we simply acknowledge the request.
-        Ok(())
+    /// Handles host context menu requests.
+    async fn context_menu(
+        &self,
+        #[zbus(connection)] _conn: &Connection,
+        x: i32,
+        y: i32,
+    ) -> zbus::fdo::Result<()> {
+        let mut service = self.0.lock().await; // do NOT use any self methods after this
+        let response = service.tray.context_menu(x, y);
+
+        match response {
+            ContextMenuResponse::ShowMenu => Ok(()),
+            ContextMenuResponse::Suppress => Err(zbus::fdo::Error::UnknownMethod(
+                "ContextMenu suppressed".into(),
+            )),
+        }
     }
 
     async fn activate(
